@@ -1,9 +1,7 @@
 name: Backup to Dropbox
 
 on:
-  push:
-    branches:
-      - '**'  # Run on all branches
+  workflow_call:
 
 jobs:
   backup:
