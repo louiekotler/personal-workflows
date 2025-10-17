@@ -29,10 +29,11 @@ jobs:
         env:
           DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
         run: |
-          echo "Uploading $ZIP_NAME to Dropbox..."
+          REPO_NAME=$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f2)
+          echo "Uploading $ZIP_NAME to Dropbox folder /$REPO_NAME..."
           RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST https://content.dropboxapi.com/2/files/upload \
             --header "Authorization: Bearer $DROPBOX_ACCESS_TOKEN" \
-            --header "Dropbox-API-Arg: {\"path\": \"/github-backups/$ZIP_NAME\",\"mode\": \"add\",\"autorename\": true,\"mute\": false}" \
+            --header "Dropbox-API-Arg: {\"path\": \"/$REPO_NAME/$ZIP_NAME\",\"mode\": \"add\",\"autorename\": true,\"mute\": false}" \
             --header "Content-Type: application/octet-stream" \
             --data-binary @"$ZIP_NAME")
           
