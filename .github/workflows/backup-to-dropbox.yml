@@ -2,6 +2,8 @@ name: Backup to Dropbox
 
 on:
   workflow_call:
+    secrets:
+      DROPBOX_ACCESS_TOKEN:
 
 jobs:
   backup:
