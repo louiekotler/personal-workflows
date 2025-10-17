@@ -1,0 +1,49 @@
+name: Backup to Dropbox
+
+on:
+  push:
+    branches:
+      - '**'  # Run on all branches
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install zip and curl
+        run: sudo apt-get install -y zip curl
+
+      - name: Create backup archive
+        run: |
+          TIMESTAMP=$(date +"%Y-%m-%dT%H-%M-%S")
+          BRANCH_NAME=$(echo "${GITHUB_REF##*/}" | tr '/' '-')
+          COMMIT_SHA=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          ZIP_NAME="backup-${BRANCH_NAME}-${COMMIT_SHA}-${TIMESTAMP}.zip"
+          zip -r "$ZIP_NAME" . -x ".git/*"
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Upload to Dropbox
+        env:
+          DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
+        run: |
+          echo "Uploading $ZIP_NAME to Dropbox..."
+          RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST https://content.dropboxapi.com/2/files/upload \
+            --header "Authorization: Bearer $DROPBOX_ACCESS_TOKEN" \
+            --header "Dropbox-API-Arg: {\"path\": \"/github-backups/$ZIP_NAME\",\"mode\": \"add\",\"autorename\": true,\"mute\": false}" \
+            --header "Content-Type: application/octet-stream" \
+            --data-binary @"$ZIP_NAME")
+          
+          echo "Dropbox API response:"
+          echo "$RESPONSE"
+          
+          # Optional: fail the step if HTTP code is not 200
+          HTTP_CODE=$(echo "$RESPONSE" | grep HTTP_CODE | cut -d':' -f2)
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Dropbox upload failed with HTTP $HTTP_CODE"
+            exit 1
+          fi
+
+          echo "✅ Dropbox upload finished successfully!"
