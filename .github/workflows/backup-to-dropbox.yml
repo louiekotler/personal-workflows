@@ -3,7 +3,9 @@ name: Backup to Dropbox
 on:
   workflow_call:
     secrets:
-      DROPBOX_ACCESS_TOKEN:
+      DROPBOX_CLIENT_ID:
+      DROPBOX_CLIENT_SECRET:
+      DROPBOX_REFRESH_TOKEN:
 
 jobs:
   backup:
@@ -13,8 +15,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Install zip and curl
-        run: sudo apt-get install -y zip curl
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y zip curl jq
 
       - name: Create backup archive
         run: |
@@ -25,22 +28,33 @@ jobs:
           zip -r "$ZIP_NAME" . -x ".git/*"
           echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
 
-      - name: Upload to Dropbox
+      - name: Upload to Dropbox using refresh token
         env:
-          DROPBOX_ACCESS_TOKEN: ${{ secrets.DROPBOX_ACCESS_TOKEN }}
+          DROPBOX_CLIENT_ID: ${{ secrets.DROPBOX_CLIENT_ID }}
+          DROPBOX_CLIENT_SECRET: ${{ secrets.DROPBOX_CLIENT_SECRET }}
+          DROPBOX_REFRESH_TOKEN: ${{ secrets.DROPBOX_REFRESH_TOKEN }}
         run: |
           REPO_NAME=$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f2)
+          echo "Obtaining Dropbox access token from refresh token..."
+          ACCESS_TOKEN=$(curl -s https://api.dropbox.com/oauth2/token \
+            -d grant_type=refresh_token \
+            -d refresh_token=${DROPBOX_REFRESH_TOKEN} \
+            -u "${DROPBOX_CLIENT_ID}:${DROPBOX_CLIENT_SECRET}" | jq -r '.access_token')
+          if [ "$ACCESS_TOKEN" = "null" ] || [ -z "$ACCESS_TOKEN" ]; then
+            echo "❌ Failed to obtain Dropbox access token — check refresh token and app credentials."
+            exit 1
+          fi
+
           echo "Uploading $ZIP_NAME to Dropbox folder /$REPO_NAME..."
           RESPONSE=$(curl -s -w "\nHTTP_CODE:%{http_code}" -X POST https://content.dropboxapi.com/2/files/upload \
-            --header "Authorization: Bearer $DROPBOX_ACCESS_TOKEN" \
+            --header "Authorization: Bearer $ACCESS_TOKEN" \
             --header "Dropbox-API-Arg: {\"path\": \"/$REPO_NAME/$ZIP_NAME\",\"mode\": \"add\",\"autorename\": true,\"mute\": false}" \
             --header "Content-Type: application/octet-stream" \
             --data-binary @"$ZIP_NAME")
-          
+
           echo "Dropbox API response:"
           echo "$RESPONSE"
-          
-          # Optional: fail the step if HTTP code is not 200
+
           HTTP_CODE=$(echo "$RESPONSE" | grep HTTP_CODE | cut -d':' -f2)
           if [ "$HTTP_CODE" != "200" ]; then
             echo "❌ Dropbox upload failed with HTTP $HTTP_CODE"
