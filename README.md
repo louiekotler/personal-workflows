@@ -110,6 +110,7 @@ jobs:
 
 6. Commit and push
 7. Once pushed, the workflow will automatically trigger on any push to any branch.
+8. This process can be repeated using the same secrets for multiple repositories! Each repository will backup to its own sub-folder on Dropbox.
 
 ---
 
